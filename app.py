@@ -6,14 +6,13 @@ from webauthn_backend import (
     save_credential,
     get_authentication_options,
     verify_authentication_response,
+    setup_database,
 )
-from sqlite3 import OperationalError
 
 # Initialize the database
-from webauthn_backend import setup_database
 setup_database()
 
-st.title("Streamlit WebAuthn Demo")
+st.title("Streamlit WebAuthn with Fingerprint Authentication")
 
 # Username input
 username = st.text_input("Enter your username")
@@ -23,7 +22,7 @@ if st.button("Register"):
     if username:
         options = get_registration_options(username)
         st.write("Registration Options (Pass to WebAuthn API):")
-        st.json(dataclasses.asdict(options))  # Convert the object to a dictionary
+        st.json(dataclasses.asdict(options))  # Convert to dictionary
         st.success("Pass the above options to your browser for registration and return the response.")
     else:
         st.error("Please provide a username.")
@@ -46,7 +45,7 @@ if st.button("Login"):
     if username:
         options = get_authentication_options(username)
         st.write("Authentication Options (Pass to WebAuthn API):")
-        st.json(dataclasses.asdict(options))  # Convert the object to a dictionary
+        st.json(dataclasses.asdict(options))  # Convert to dictionary
         st.success("Pass the above options to your browser for authentication and return the response.")
     else:
         st.error("Please provide a username.")
