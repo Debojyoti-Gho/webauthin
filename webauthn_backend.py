@@ -31,7 +31,7 @@ def get_registration_options(username):
     options = generate_registration_options(
         rp_id="localhost",
         rp_name="Streamlit WebAuthn App",
-        user_id=username,
+        user_id=username.encode('utf-8'),  # Convert to bytes
         user_name=username,
         user_display_name=username,
         challenge=challenge,
