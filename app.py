@@ -4,6 +4,12 @@ import streamlit as st
 def webauthn_register_script():
     script = """
     <script>
+        // This will be called when the page loads
+        window.addEventListener('load', () => {
+            const registerButton = document.getElementById('register-button');
+            registerButton.addEventListener('click', registerFingerprint);
+        });
+
         async function registerFingerprint() {
             try {
                 // Call the backend to get registration options
@@ -30,7 +36,7 @@ def webauthn_register_script():
             }
         }
     </script>
-    <button onclick="registerFingerprint()">Register Fingerprint</button>
+    <button id="register-button">Register Fingerprint</button>
     <p id="registration-result"></p>
     """
     return script
@@ -40,6 +46,12 @@ def webauthn_register_script():
 def webauthn_authenticate_script():
     script = """
     <script>
+        // This will be called when the page loads
+        window.addEventListener('load', () => {
+            const authenticateButton = document.getElementById('authenticate-button');
+            authenticateButton.addEventListener('click', authenticateFingerprint);
+        });
+
         async function authenticateFingerprint() {
             try {
                 // Call the backend to get authentication options
@@ -65,7 +77,7 @@ def webauthn_authenticate_script():
             }
         }
     </script>
-    <button onclick="authenticateFingerprint()">Authenticate Fingerprint</button>
+    <button id="authenticate-button">Authenticate Fingerprint</button>
     <p id="authentication-result"></p>
     """
     return script
