@@ -1,6 +1,4 @@
-import streamlit as st
-
-# Serve WebAuthn JavaScript for registration
+# WebAuthn Registration Script (JavaScript) for capturing fingerprint data
 def webauthn_register_script():
     script = """
     <script>
@@ -12,23 +10,27 @@ def webauthn_register_script():
 
         async function registerFingerprint() {
             try {
-                // Call the backend to get registration options
-                const response = await fetch('/generate-registration-options');
-                const publicKey = await response.json();
+                // Generate WebAuthn registration options
+                const publicKey = {
+                    challenge: Uint8Array.from('someRandomChallenge123', c => c.charCodeAt(0)),
+                    rp: { name: 'asas-beta-by-debojyotighosh.streamlit.app' },
+                    user: {
+                        id: new Uint8Array(16),
+                        name: 'user@example.com',
+                        displayName: 'Example User'
+                    },
+                    pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+                    authenticatorAttachment: 'platform',
+                    timeout: 60000,
+                    userVerification: 'required'
+                };
 
-                // Use WebAuthn API to register
+                // Call WebAuthn API to register the credential
                 const credential = await navigator.credentials.create({ publicKey });
 
-                // Store the response
-                const credentialId = credential.id;
-                const attestation = JSON.stringify(credential.response.attestationObject);
-
-                // Send response back to server
-                await fetch('/verify-registration', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ credentialId, attestation })
-                });
+                // Store the registration response (public key and credential ID)
+                localStorage.setItem('credentialId', credential.id);
+                localStorage.setItem('publicKey', JSON.stringify(credential.response.attestationObject));
 
                 document.getElementById('registration-result').innerHTML = 'Registration successful!';
             } catch (error) {
@@ -42,8 +44,8 @@ def webauthn_register_script():
     return script
 
 
-# Serve WebAuthn JavaScript for authentication
-def webauthn_authenticate_script():
+# Placeholder for WebAuthn integration script
+def webauthn_script():
     script = """
     <script>
         // This will be called when the page loads
@@ -54,11 +56,12 @@ def webauthn_authenticate_script():
 
         async function authenticateFingerprint() {
             try {
-                // Call the backend to get authentication options
-                const response = await fetch('/generate-authentication-options');
-                const publicKey = await response.json();
+                const publicKey = {
+                    challenge: Uint8Array.from("YourServerChallenge", c => c.charCodeAt(0)), // Replace with a secure challenge
+                    timeout: 60000,
+                    userVerification: "required"
+                };
 
-                // Use WebAuthn API to authenticate
                 const assertion = await navigator.credentials.get({ publicKey });
 
                 // Send the assertion back to server for verification
@@ -71,18 +74,14 @@ def webauthn_authenticate_script():
                     body: JSON.stringify({ credentialId, clientData })
                 });
 
-                document.getElementById('authentication-result').innerHTML = 'Authentication successful!';
+                document.getElementById('webauthn-result').innerHTML = 'Authentication successful!';
             } catch (error) {
-                document.getElementById('authentication-result').innerHTML = 'Authentication failed: ' + error;
+                document.getElementById('webauthn-result').innerHTML = 'Authentication failed: ' + error;
             }
         }
     </script>
     <button id="authenticate-button">Authenticate Fingerprint</button>
-    <p id="authentication-result"></p>
+    <p id="webauthn-result"></p>
+    <input type="hidden" id="webauthn-status" name="webauthn-status" value="pending">
     """
     return script
-
-
-# Embedding JavaScript into Streamlit
-st.markdown(webauthn_register_script(), unsafe_allow_html=True)
-st.markdown(webauthn_authenticate_script(), unsafe_allow_html=True)
