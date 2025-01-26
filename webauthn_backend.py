@@ -1,14 +1,10 @@
 import os
 import sqlite3
-from pywebauthn.helpers.structs import (
-    PublicKeyCredentialCreationOptions,
-    PublicKeyCredentialRequestOptions,
-)
-from pywebauthn.helpers import generate_challenge
+from webauthn import generate_registration_options, generate_authentication_options
 
-# Initialize SQLite database
 DB_FILE = "database.db"
 TABLE_NAME = "credentials"
+
 
 def init_db():
     """Initialize the SQLite database and create the credentials table."""
@@ -24,23 +20,21 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 # Initialize the database on import
 init_db()
 
+
 def get_registration_options(username):
     """Generate registration options for the given username."""
-    challenge = generate_challenge()
-    creation_options = PublicKeyCredentialCreationOptions(
+    challenge = os.urandom(32).hex()
+    options = generate_registration_options(
+        rp_id="localhost",
+        rp_name="Streamlit WebAuthn App",
+        user_id=username,
+        user_name=username,
+        user_display_name=username,
         challenge=challenge,
-        rp={"name": "Streamlit WebAuthn App", "id": "localhost"},
-        user={
-            "id": os.urandom(16),
-            "name": username,
-            "displayName": username,
-        },
-        pubKeyCredParams=[{"alg": -7, "type": "public-key"}],
-        timeout=60000,
-        attestation="none",
     )
 
     # Save the challenge to the database
@@ -49,11 +43,12 @@ def get_registration_options(username):
     cursor.execute(f"""
         INSERT OR REPLACE INTO {TABLE_NAME} (username, challenge)
         VALUES (?, ?)
-    """, (username, challenge.hex()))
+    """, (username, challenge))
     conn.commit()
     conn.close()
 
-    return creation_options
+    return options
+
 
 def save_credential(username, credential_id):
     """Save the registered credential ID for the user."""
@@ -66,6 +61,7 @@ def save_credential(username, credential_id):
     """, (credential_id, username))
     conn.commit()
     conn.close()
+
 
 def get_authentication_options(username):
     """Generate authentication options for the given username."""
@@ -83,14 +79,10 @@ def get_authentication_options(username):
         raise ValueError("User not registered.")
 
     credential_id, challenge = result
-    request_options = PublicKeyCredentialRequestOptions(
-        challenge=bytes.fromhex(challenge),
-        allowCredentials=[
-            {
-                "type": "public-key",
-                "id": credential_id,
-            }
-        ],
-        timeout=60000,
+    options = generate_authentication_options(
+        rp_id="localhost",
+        challenge=challenge,
+        allow_credentials=[{"id": credential_id, "type": "public-key"}],
     )
-    return request_options
+
+    return options
