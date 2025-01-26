@@ -3,7 +3,7 @@ import requests
 import json
 
 # Flask Backend URL (Update with the deployed URL on Render)
-BACKEND_URL = "http://localhost:5000"  # Change this to your Render URL
+BACKEND_URL = "https://backend-flask-webauthin.onrender.com"  # Change this to your Render URL
 
 # Function to trigger user registration (WebAuthn)
 def register_user(user_id, user_name):
