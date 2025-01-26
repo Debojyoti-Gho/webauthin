@@ -38,7 +38,7 @@ def webauthn_register_script():
             }
         }
     </script>
-    <button onclick={"registerFingerprint()"}>Register Fingerprint</button>
+    <button onclick="registerFingerprint()">Register Fingerprint</button>
     <p id="registration-result"></p>
     """
     return script
@@ -73,7 +73,7 @@ def webauthn_authenticate_script():
             }
         }
     </script>
-    <button onclick={"authenticateFingerprint()"}>Authenticate Fingerprint</button>
+    <button onclick="authenticateFingerprint()">Authenticate Fingerprint</button>
     <p id="authentication-result"></p>
     """
     return script
