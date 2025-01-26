@@ -2,12 +2,6 @@
 def webauthn_register_script():
     script = """
     <script>
-        // This will be called when the page loads
-        window.addEventListener('load', () => {
-            const registerButton = document.getElementById('register-button');
-            registerButton.addEventListener('click', registerFingerprint);
-        });
-
         async function registerFingerprint() {
             try {
                 // Generate WebAuthn registration options
@@ -38,7 +32,7 @@ def webauthn_register_script():
             }
         }
     </script>
-    <button id="register-button">Register Fingerprint</button>
+    <button onclick="registerFingerprint()">Register Fingerprint</button>
     <p id="registration-result"></p>
     """
     return script
@@ -48,12 +42,6 @@ def webauthn_register_script():
 def webauthn_script():
     script = """
     <script>
-        // This will be called when the page loads
-        window.addEventListener('load', () => {
-            const authenticateButton = document.getElementById('authenticate-button');
-            authenticateButton.addEventListener('click', authenticateFingerprint);
-        });
-
         async function authenticateFingerprint() {
             try {
                 const publicKey = {
@@ -80,7 +68,7 @@ def webauthn_script():
             }
         }
     </script>
-    <button id="authenticate-button">Authenticate Fingerprint</button>
+    <button onclick="authenticateFingerprint()">Authenticate Fingerprint</button>
     <p id="webauthn-result"></p>
     <input type="hidden" id="webauthn-status" name="webauthn-status" value="pending">
     """
