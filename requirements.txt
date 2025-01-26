@@ -1,3 +1,2 @@
-streamlit
-webauthn
-cryptography
+streamlit 
+requests
