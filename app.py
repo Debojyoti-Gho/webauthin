@@ -1,135 +1,79 @@
-from flask import Flask, request, jsonify
-from webauthn import generate_registration_options, verify_registration_response, generate_authentication_options, verify_authentication_response
-import sqlite3
-import base64
+import streamlit as st
+import requests
 import json
 
-app = Flask(__name__)
+# Flask Backend URL (Update with the deployed URL on Render)
+BACKEND_URL = "http://localhost:5000"  # Change this to your Render URL
 
-# SQLite Database Initialization
-def init_db():
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS users (
-                        user_id TEXT PRIMARY KEY,
-                        user_name TEXT NOT NULL,
-                        credential_data BLOB NOT NULL)''')
-    conn.commit()
-    conn.close()
+# Function to trigger user registration (WebAuthn)
+def register_user(user_id, user_name):
+    response = requests.post(f"{BACKEND_URL}/register_options", json={"user_id": user_id, "user_name": user_name})
+    options = response.json()
+    
+    st.session_state.registration_options = options
 
-init_db()
+    # Trigger WebAuthn registration in the browser using JavaScript
+    st.components.v1.html(f"""
+        <script>
+            const options = {json.dumps(options)};
+            navigator.credentials.create({{
+                publicKey: options
+            }}).then(response => {{
+                fetch("{BACKEND_URL}/register_response", {{
+                    method: 'POST',
+                    body: JSON.stringify({
+                        user_id: "{user_id}",
+                        response_data: response
+                    }),
+                    headers: {{
+                        'Content-Type': 'application/json'
+                    }}
+                }});
+            }}).catch(err => {{
+                console.log("Registration failed: ", err);
+            }});
+        </script>
+    """, height=0)
 
-# Register options: Generate registration options and send to frontend
-@app.route('/register_options', methods=['POST'])
-def register_options():
-    user_id = request.json.get("user_id")
-    user_name = request.json.get("user_name")
+# Function to trigger user login (WebAuthn)
+def login_user(user_id):
+    response = requests.post(f"{BACKEND_URL}/login_options", json={"user_id": user_id})
+    options = response.json()
+    
+    st.session_state.authentication_options = options
 
-    registration_options = generate_registration_options(
-        rp_name="StreamlitApp",
-        rp_id="localhost",
-        user_id=user_id,
-        user_name=user_name,
-        user_display_name=user_name
-    )
+    # Trigger WebAuthn login in the browser using JavaScript
+    st.components.v1.html(f"""
+        <script>
+            const options = {json.dumps(options)};
+            navigator.credentials.get({{
+                publicKey: options
+            }}).then(response => {{
+                fetch("{BACKEND_URL}/login_response", {{
+                    method: 'POST',
+                    body: JSON.stringify({
+                        user_id: "{user_id}",
+                        response_data: response
+                    }),
+                    headers: {{
+                        'Content-Type': 'application/json'
+                    }}
+                }});
+            }}).catch(err => {{
+                console.log("Login failed: ", err);
+            }});
+        </script>
+    """, height=0)
 
-    # Store registration options temporarily for verification later
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-    cursor.execute("INSERT OR REPLACE INTO users (user_id, user_name, credential_data) VALUES (?, ?, ?)",
-                   (user_id, user_name, json.dumps(registration_options)))
-    conn.commit()
-    conn.close()
+# Streamlit UI for Register and Login
+st.title("WebAuthn Fingerprint Authentication")
+user_id = st.text_input("Enter User ID")
+user_name = st.text_input("Enter User Name")
 
-    return jsonify(registration_options)
+if st.button("Register User"):
+    register_user(user_id, user_name)
+    st.success("Registration process initiated!")
 
-# Register response: Verify registration data (attestation)
-@app.route('/register_response', methods=['POST'])
-def register_response():
-    user_id = request.json.get("user_id")
-    response_data = request.json.get("response_data")
-
-    # Retrieve stored registration options
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-    cursor.execute("SELECT credential_data FROM users WHERE user_id = ?", (user_id,))
-    row = cursor.fetchone()
-    conn.close()
-
-    if not row:
-        return jsonify({"status": "error", "message": "User not found!"}), 400
-
-    registration_options = json.loads(row[0])
-
-    try:
-        credential = verify_registration_response(
-            credential=response_data,
-            expected_rp_id="localhost",
-            expected_origin="http://localhost:8501"
-        )
-        
-        # Store the user's public key credential
-        conn = sqlite3.connect('users.db')
-        cursor = conn.cursor()
-        cursor.execute("UPDATE users SET credential_data = ? WHERE user_id = ?",
-                       (json.dumps(credential), user_id))
-        conn.commit()
-        conn.close()
-
-        return jsonify({"status": "success", "message": "Registration successful!"}), 200
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
-
-# Login options: Generate authentication options for login
-@app.route('/login_options', methods=['POST'])
-def login_options():
-    user_id = request.json.get("user_id")
-
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-    cursor.execute("SELECT credential_data FROM users WHERE user_id = ?", (user_id,))
-    row = cursor.fetchone()
-    conn.close()
-
-    if not row:
-        return jsonify({"status": "error", "message": "User not found!"}), 400
-
-    credential_data = json.loads(row[0])
-    authentication_options = generate_authentication_options(
-        rp_id="localhost",
-        user_id=user_id,
-        allow_credentials=[credential_data]
-    )
-
-    return jsonify(authentication_options)
-
-# Login response: Verify the login attempt (assertion)
-@app.route('/login_response', methods=['POST'])
-def login_response():
-    user_id = request.json.get("user_id")
-    response_data = request.json.get("response_data")
-
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-    cursor.execute("SELECT credential_data FROM users WHERE user_id = ?", (user_id,))
-    row = cursor.fetchone()
-    conn.close()
-
-    if not row:
-        return jsonify({"status": "error", "message": "User not found!"}), 400
-
-    credential_data = json.loads(row[0])
-
-    try:
-        result = verify_authentication_response(
-            credential=response_data,
-            expected_rp_id="localhost",
-            expected_origin="http://localhost:8501",
-            allow_credentials=[credential_data]
-        )
-        return jsonify({"status": "success", "message": "Authentication successful!"}), 200
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
-
-if __name__ == '__main__':
-    app.run(debug=True)
+if st.button("Login User"):
+    login_user(user_id)
+    st.success("Login process initiated!")
