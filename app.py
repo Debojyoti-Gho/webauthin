@@ -1,66 +1,84 @@
 import streamlit as st
-import json
-import dataclasses
-from webauthn_backend import (
-    get_registration_options,
-    save_credential,
-    get_authentication_options,
-    verify_authentication_response,
-    setup_database,
-)
+import sqlite3
+import os
+from webauthn_backend import setup_database, save_credential
 
 # Initialize the database
 setup_database()
 
-st.title("Streamlit WebAuthn with Fingerprint Authentication")
+st.title("WebAuthn Fingerprint Authentication")
 
-# Username input
-username = st.text_input("Enter your username")
+# Serve WebAuthn JavaScript for registration
+def webauthn_register_script():
+    script = """
+    <script>
+        async function registerFingerprint() {
+            try {
+                // Call the backend to get registration options
+                const response = await fetch('/generate-registration-options');
+                const publicKey = await response.json();
 
-# Registration
-if st.button("Register"):
-    if username:
-        options = get_registration_options(username)
-        st.write("Registration Options (Pass to WebAuthn API):")
-        st.json(dataclasses.asdict(options))  # Convert to dictionary
-        st.success("Pass the above options to your browser for registration and return the response.")
-    else:
-        st.error("Please provide a username.")
+                // Use WebAuthn API to register
+                const credential = await navigator.credentials.create({ publicKey });
 
-# Handle registration response
-registration_response = st.text_area("Paste the registration response JSON here")
-if st.button("Save Credential"):
-    if username and registration_response:
-        try:
-            registration_data = json.loads(registration_response)
-            save_credential(username, registration_data)
-            st.success("Credential saved successfully!")
-        except Exception as e:
-            st.error(f"Error saving credential: {e}")
-    else:
-        st.error("Please provide both a username and registration response.")
+                // Store the response
+                const credentialId = credential.id;
+                const attestation = JSON.stringify(credential.response.attestationObject);
 
-# Authentication
-if st.button("Login"):
-    if username:
-        options = get_authentication_options(username)
-        st.write("Authentication Options (Pass to WebAuthn API):")
-        st.json(dataclasses.asdict(options))  # Convert to dictionary
-        st.success("Pass the above options to your browser for authentication and return the response.")
-    else:
-        st.error("Please provide a username.")
+                // Send response back to server
+                await fetch('/verify-registration', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ credentialId, attestation })
+                });
 
-# Handle authentication response
-authentication_response = st.text_area("Paste the authentication response JSON here")
-if st.button("Verify Login"):
-    if username and authentication_response:
-        try:
-            authentication_data = json.loads(authentication_response)
-            if verify_authentication_response(username, authentication_data):
-                st.success("Login successful!")
-            else:
-                st.error("Login failed. Could not verify the response.")
-        except Exception as e:
-            st.error(f"Error verifying login: {e}")
-    else:
-        st.error("Please provide both a username and authentication response.")
+                document.getElementById('registration-result').innerHTML = 'Registration successful!';
+            } catch (error) {
+                document.getElementById('registration-result').innerHTML = 'Registration failed: ' + error;
+            }
+        }
+    </script>
+    <button onclick="registerFingerprint()">Register Fingerprint</button>
+    <p id="registration-result"></p>
+    """
+    return script
+
+
+# Serve WebAuthn JavaScript for authentication
+def webauthn_authenticate_script():
+    script = """
+    <script>
+        async function authenticateFingerprint() {
+            try {
+                // Call the backend to get authentication options
+                const response = await fetch('/generate-authentication-options');
+                const publicKey = await response.json();
+
+                // Use WebAuthn API to authenticate
+                const assertion = await navigator.credentials.get({ publicKey });
+
+                // Send the assertion back to server for verification
+                const credentialId = assertion.id;
+                const clientData = JSON.stringify(assertion.response.clientDataJSON);
+
+                await fetch('/verify-authentication', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ credentialId, clientData })
+                });
+
+                document.getElementById('authentication-result').innerHTML = 'Authentication successful!';
+            } catch (error) {
+                document.getElementById('authentication-result').innerHTML = 'Authentication failed: ' + error;
+            }
+        }
+    </script>
+    <button onclick="authenticateFingerprint()">Authenticate Fingerprint</button>
+    <p id="authentication-result"></p>
+    """
+    return script
+
+
+# Embedding JavaScript into Streamlit
+st.markdown(webauthn_register_script(), unsafe_allow_html=True)
+st.markdown(webauthn_authenticate_script(), unsafe_allow_html=True)
