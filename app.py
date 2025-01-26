@@ -1,5 +1,6 @@
 import streamlit as st
 import json
+import dataclasses
 from webauthn_backend import (
     get_registration_options,
     save_credential,
@@ -22,7 +23,7 @@ if st.button("Register"):
     if username:
         options = get_registration_options(username)
         st.write("Registration Options (Pass to WebAuthn API):")
-        st.json(options.dict())  # Convert to a dictionary and display
+        st.json(dataclasses.asdict(options))  # Convert the object to a dictionary
         st.success("Pass the above options to your browser for registration and return the response.")
     else:
         st.error("Please provide a username.")
@@ -45,7 +46,7 @@ if st.button("Login"):
     if username:
         options = get_authentication_options(username)
         st.write("Authentication Options (Pass to WebAuthn API):")
-        st.json(options.dict())  # Convert to a dictionary and display
+        st.json(dataclasses.asdict(options))  # Convert the object to a dictionary
         st.success("Pass the above options to your browser for authentication and return the response.")
     else:
         st.error("Please provide a username.")
