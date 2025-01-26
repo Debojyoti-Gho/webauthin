@@ -1,3 +1,5 @@
+import streamlit as st
+
 # Serve WebAuthn JavaScript for registration
 def webauthn_register_script():
     script = """
