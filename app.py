@@ -1,13 +1,3 @@
-import streamlit as st
-import sqlite3
-import os
-from webauthn_backend import setup_database, save_credential
-
-# Initialize the database
-setup_database()
-
-st.title("WebAuthn Fingerprint Authentication")
-
 # Serve WebAuthn JavaScript for registration
 def webauthn_register_script():
     script = """
