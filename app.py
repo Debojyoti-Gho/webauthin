@@ -122,25 +122,26 @@ with tab1:
                         attestationObject: Array.from(new Uint8Array(credential.response.attestationObject))
                     }}
                 }};
-                document.getElementById("response").value = JSON.stringify(response);
-                document.getElementById("form").submit();
+                // Automatically send this response to the server
+                fetch("/register", {{
+                    method: "POST",
+                    headers: {{
+                        "Content-Type": "application/json"
+                    }},
+                    body: JSON.stringify(response)
+                }}).then(response => {{
+                    return response.json();
+                }}).then(data => {{
+                    alert(data.message);  // Show registration success/failure message
+                }});
             }} catch (err) {{
                 alert("Registration failed: " + err.message);
             }}
         }}
         registerAuthenticator();
         </script>
-        <form id="form" method="post">
-            <input type="hidden" id="response" name="response">
-        </form>
         """
         st.markdown(js_code, unsafe_allow_html=True)
-
-    # Handle WebAuthn Response
-    response = st.text_area("Paste the WebAuthn response here:")
-    if response and st.button("Submit Registration"):
-        message = register_user(username, response)
-        st.success(message)
 
 # Authentication Tab
 with tab2:
@@ -164,12 +165,10 @@ with tab2:
             async function authenticate() {{
                 const options = {json.dumps(authentication_options)};
                 options.publicKey.challenge = Uint8Array.from(atob(options.publicKey.challenge), c => c.charCodeAt(0));
-                options.publicKey.allowCredentials = options.publicKey.allowCredentials.map(cred => {{
-                    return {{
-                        type: cred.type,
-                        id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0))
-                    }};
-                }});
+                options.publicKey.allowCredentials = options.publicKey.allowCredentials.map(cred => ({
+                    ...cred,
+                    id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0))
+                }));
 
                 try {{
                     const assertion = await navigator.credentials.get(options);
@@ -183,22 +182,23 @@ with tab2:
                             signature: Array.from(new Uint8Array(assertion.response.signature))
                         }}
                     }};
-                    document.getElementById("auth_response").value = JSON.stringify(response);
-                    document.getElementById("auth_form").submit();
+                    // Automatically send this response to the server
+                    fetch("/authenticate", {{
+                        method: "POST",
+                        headers: {{
+                            "Content-Type": "application/json"
+                        }},
+                        body: JSON.stringify(response)
+                    }}).then(response => {{
+                        return response.json();
+                    }}).then(data => {{
+                        alert(data.message);  // Show authentication success/failure message
+                    }});
                 }} catch (err) {{
                     alert("Authentication failed: " + err.message);
                 }}
             }}
             authenticate();
             </script>
-            <form id="auth_form" method="post">
-                <input type="hidden" id="auth_response" name="auth_response">
-            </form>
             """
             st.markdown(js_code, unsafe_allow_html=True)
-
-    # Handle WebAuthn Response
-    auth_response = st.text_area("Paste the WebAuthn response here (Authentication):")
-    if auth_response and st.button("Submit Authentication"):
-        message = authenticate_user(username, auth_response)
-        st.success(message)
