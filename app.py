@@ -162,43 +162,46 @@ with tab2:
 
             js_code = f"""
             <script>
-            async function authenticate() {{
-                const options = {json.dumps(authentication_options)};
+            async function authenticate() {
+                const options = { /* your options here */ };
                 options.publicKey.challenge = Uint8Array.from(atob(options.publicKey.challenge), c => c.charCodeAt(0));
                 options.publicKey.allowCredentials = options.publicKey.allowCredentials.map(cred => ({
-                    ...cred,
-                    id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0))
+                    id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0)),
+                    type: cred.type,
+                    transports: cred.transports  // Ensure we include these properties
                 }));
-
-                try {{
+            
+                try {
                     const assertion = await navigator.credentials.get(options);
-                    const response = {{
+                    const response = {
                         id: assertion.id,
                         rawId: Array.from(new Uint8Array(assertion.rawId)),
                         type: assertion.type,
-                        response: {{
+                        response: {
                             clientDataJSON: Array.from(new Uint8Array(assertion.response.clientDataJSON)),
                             authenticatorData: Array.from(new Uint8Array(assertion.response.authenticatorData)),
                             signature: Array.from(new Uint8Array(assertion.response.signature))
-                        }}
-                    }};
+                        }
+                    };
+            
                     // Automatically send this response to the server
-                    fetch("/authenticate", {{
+                    fetch("/authenticate", {
                         method: "POST",
-                        headers: {{
+                        headers: {
                             "Content-Type": "application/json"
-                        }},
+                        },
                         body: JSON.stringify(response)
-                    }}).then(response => {{
+                    }).then(response => {
                         return response.json();
-                    }}).then(data => {{
+                    }).then(data => {
                         alert(data.message);  // Show authentication success/failure message
-                    }});
-                }} catch (err) {{
+                    });
+                } catch (err) {
                     alert("Authentication failed: " + err.message);
-                }}
-            }}
+                }
+            }
             authenticate();
             </script>
+
             """
             st.markdown(js_code, unsafe_allow_html=True)
