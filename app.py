@@ -1,100 +1,131 @@
 import streamlit as st
+import json
+import random
+import string
+import requests
+import streamlit.components.v1 as components
 
-# Frontend: Display the WebAuthn HTML and JavaScript
-webauthn_registration_html = """
-    <html>
-        <head>
-            <script>
-                if (window.PublicKeyCredential) {
-                    console.log("WebAuthn supported!");
+# Function to generate random challenge
+def generate_random_challenge():
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=64))
 
-                    // Utility function to convert base64 to ArrayBuffer
-                    function base64ToArrayBuffer(base64) {
-                        var binary_string = atob(base64);
-                        var len = binary_string.length;
-                        var bytes = new Uint8Array(len);
-                        for (var i = 0; i < len; i++) {
-                            bytes[i] = binary_string.charCodeAt(i);
-                        }
-                        return bytes.buffer;
-                    }
+# Function to create WebAuthn registration options
+def get_registration_options():
+    challenge = generate_random_challenge()  # Generate random challenge
+    options = {
+        "publicKey": {
+            "rp": {
+                "id": "cosmosclownstore.com",
+                "name": "Cosmo’s Clown Store"
+            },
+            "user": {
+                "id": "1234",  # Example user ID, replace with actual user identifier
+                "name": "krusty@example.com",
+                "displayName": "Krusty The Clown"
+            },
+            "challenge": challenge,  # Use random challenge
+            "pubKeyCredParams": [{"type": "public-key", "alg": -7}],  # ES256
+            "authenticatorSelection": {}
+        }
+    }
+    return json.dumps(options)
 
-                    async function registerAuthenticator() {
-                        const options = {
-                            publicKey: {
-                                rp: { id: "cosmosclownstore.com", name: "Cosmo’s Clown Store" },
-                                user: { id: "1234", name: "krusty@example.com", displayName: "Krusty The Clown" },
-                                // Assume `challenge` comes as a base64-encoded string from your backend
-                                challenge: base64ToArrayBuffer("random-challenge-in-base64"), // Replace this with actual challenge
-                                pubKeyCredParams: [ { type: "public-key", alg: -7 }],
-                                authenticatorSelection: {}
-                            }
-                        };
+# Function to create WebAuthn authentication options
+def get_authentication_options(credential_id):
+    challenge = generate_random_challenge()  # Generate random challenge
+    options = {
+        "publicKey": {
+            "rpId": "cosmosclownstore.com",
+            "challenge": challenge,  # Use random challenge
+            "userVerification": "preferred",
+            "allowCredentials": [{
+                "type": "public-key",
+                "id": credential_id
+            }]
+        }
+    }
+    return json.dumps(options)
 
-                        try {
-                            const credential = await navigator.credentials.create(options);
-                            console.log(credential);
-                            // Send this credential data to your backend for processing
-                            fetch("/register", {
-                                method: 'POST',
-                                body: JSON.stringify(credential),
-                                headers: {
-                                    'Content-Type': 'application/json'
-                                }
-                            })
-                            .then(response => response.json())
-                            .then(data => console.log("Registration response", data));
-                        } catch (error) {
-                            console.error("Error during registration:", error);
-                        }
-                    }
+# Function to inject JavaScript for WebAuthn registration
+def inject_js_register(js_code):
+    components.html(f"""
+        <script>
+        {js_code}
+        </script>
+    """)
 
-                    async function authenticateUser() {
-                        const credentialId = "credential_id_from_registration";
+# Function to inject JavaScript for WebAuthn authentication
+def inject_js_authenticate(js_code):
+    components.html(f"""
+        <script>
+        {js_code}
+        </script>
+    """)
 
-                        const options = {
-                            publicKey: {
-                                rpId: "cosmosclownstore.com",
-                                challenge: base64ToArrayBuffer("random-challenge-in-base64"), // Replace this with actual challenge
-                                userVerification: "preferred",
-                                allowCredentials: [{ type: "public-key", id: credentialId }]
-                            }
-                        };
+# Registration flow
+def register_user():
+    options = get_registration_options()
 
-                        try {
-                            const credential = await navigator.credentials.get(options);
-                            console.log(credential);
-                            // Send authentication data to your backend for verification
-                            fetch("/authenticate", {
-                                method: 'POST',
-                                body: JSON.stringify(credential),
-                                headers: {
-                                    'Content-Type': 'application/json'
-                                }
-                            })
-                            .then(response => response.json())
-                            .then(data => console.log("Authentication response", data));
-                        } catch (error) {
-                            console.error("Error during authentication:", error);
-                        }
-                    }
+    # Display the registration options as JSON for WebAuthn
+    st.write("Registration options:", options)
 
-                    // Expose the functions globally so they are accessible by the buttons
-                    window.registerAuthenticator = registerAuthenticator;
-                    window.authenticateUser = authenticateUser;
+    # JavaScript for handling WebAuthn registration
+    register_js = f"""
+    if (window.PublicKeyCredential) {{
+        const options = {options};
+        navigator.credentials.create(options).then(function(response) {{
+            console.log(response);  // Handle the response here
+            alert('Registration Successful!');
+            // In real-world, you would store response.clientDataJSON and response.attestationObject in a database
+        }}).catch(function(error) {{
+            console.error(error);
+        }});
+    }} else {{
+        alert("WebAuthn not supported. Falling back to password authentication.");
+    }}
+    """
+    inject_js_register(register_js)
 
-                } else {
-                    alert("WebAuthn is not supported in this browser.");
-                }
-            </script>
-        </head>
-        <body>
-            <h1>WebAuthn Authentication</h1>
-            <button onclick="registerAuthenticator()">Register Biometric Authenticator</button>
-            <button onclick="authenticateUser()">Login with Biometric</button>
-        </body>
-    </html>
-"""
+# Authentication flow
+def authenticate_user():
+    # Simulate getting a credential ID after registration
+    credential_id = "some_credential_id"  # This should be retrieved from your database
 
-# Display the WebAuthn registration and authentication UI
-st.components.v1.html(webauthn_registration_html)
+    options = get_authentication_options(credential_id)
+
+    # Display the authentication options as JSON for WebAuthn
+    st.write("Authentication options:", options)
+
+    # JavaScript for handling WebAuthn authentication
+    authenticate_js = f"""
+    if (window.PublicKeyCredential) {{
+        const options = {options};
+        navigator.credentials.get(options).then(function(response) {{
+            console.log(response);  // Handle the response here
+            alert('Authentication Successful!');
+            // In real-world, you would compare the response.clientDataJSON to the expected challenge
+        }}).catch(function(error) {{
+            console.error(error);
+        }});
+    }} else {{
+        alert("WebAuthn not supported. Falling back to password authentication.");
+    }}
+    """
+    inject_js_authenticate(authenticate_js)
+
+# Main page UI
+def main():
+    st.title("Biometric Authentication App")
+
+    # Sidebar for navigation
+    choice = st.sidebar.radio("Select Action", ["Register", "Login"])
+
+    if choice == "Register":
+        st.write("#### Register your biometric data")
+        register_user()
+    elif choice == "Login":
+        st.write("#### Login with your biometric data")
+        authenticate_user()
+
+if __name__ == "__main__":
+    main()
