@@ -164,10 +164,12 @@ with tab2:
             async function authenticate() {{
                 const options = {json.dumps(authentication_options)};
                 options.publicKey.challenge = Uint8Array.from(atob(options.publicKey.challenge), c => c.charCodeAt(0));
-                options.publicKey.allowCredentials = options.publicKey.allowCredentials.map(cred => ({
-                    ...cred,
-                    id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0))
-                }));
+                options.publicKey.allowCredentials = options.publicKey.allowCredentials.map(cred => {{
+                    return {{
+                        type: cred.type,
+                        id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0))
+                    }};
+                }});
 
                 try {{
                     const assertion = await navigator.credentials.get(options);
