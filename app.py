@@ -1,79 +1,150 @@
 import streamlit as st
-import requests
+import sqlite3
 import json
+from uuid import uuid4
 
-# Flask Backend URL (Update with the deployed URL on Render)
-BACKEND_URL = "https://backend-flask-webauthin.onrender.com"  # Change this to your Render URL
+# Database setup
+conn = sqlite3.connect("users.db")
+cursor = conn.cursor()
 
-# Function to trigger user registration (WebAuthn)
-def register_user(user_id, user_name):
-    response = requests.post(f"{BACKEND_URL}/register_options", json={"user_id": user_id, "user_name": user_name})
-    options = response.json()
+# Create users table
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,  -- UUID
+    username TEXT UNIQUE NOT NULL,  -- Username or email
+    credential_id TEXT NOT NULL  -- Credential ID from WebAuthn response
+)
+""")
+conn.commit()
+
+# Streamlit App
+st.title("WebAuthn with SQLite")
+
+st.sidebar.header("Actions")
+option = st.sidebar.selectbox("Choose an action", ["Register", "Authenticate"])
+
+# Step 1: Define helper functions
+def generate_registration_options(user_id, username):
+    """Generate options for WebAuthn registration."""
+    return {
+        "publicKey": {
+            "rp": {
+                "id": "localhost",  # Use your domain in production
+                "name": "Streamlit WebAuthn App"
+            },
+            "user": {
+                "id": user_id.encode(),
+                "name": username,
+                "displayName": username
+            },
+            "challenge": uuid4().hex.encode(),  # Random challenge for security
+            "pubKeyCredParams": [{"type": "public-key", "alg": -7}],  # ECDSA with SHA-256
+            "authenticatorSelection": {"userVerification": "preferred"}
+        }
+    }
+
+def generate_authentication_options(credential_id):
+    """Generate options for WebAuthn authentication."""
+    return {
+        "publicKey": {
+            "rpId": "localhost",  # Use your domain in production
+            "challenge": uuid4().hex.encode(),  # Random challenge for security
+            "userVerification": "preferred",
+            "allowCredentials": [{"type": "public-key", "id": credential_id.encode()}]
+        }
+    }
+
+# Step 2: Handle Registration
+if option == "Register":
+    st.header("Register an Authenticator")
     
-    st.session_state.registration_options = options
+    username = st.text_input("Enter your username:")
+    if st.button("Register"):
+        if username:
+            user_id = uuid4().hex  # Generate a unique ID for the user
+            registration_options = generate_registration_options(user_id, username)
 
-    # Trigger WebAuthn registration in the browser using JavaScript
-    st.components.v1.html(f"""
-        <script>
-            const options = {json.dumps(options)};
-            navigator.credentials.create({{
-                publicKey: options
-            }}).then(response => {{
-                fetch("{BACKEND_URL}/register_response", {{
-                    method: 'POST',
-                    body: JSON.stringify({
-                        user_id: "{user_id}",
-                        response_data: response
-                    }),
-                    headers: {{
-                        'Content-Type': 'application/json'
-                    }}
-                }});
-            }}).catch(err => {{
-                console.log("Registration failed: ", err);
-            }});
-        </script>
-    """, height=0)
+            # Embed WebAuthn registration JS in Streamlit
+            js_code = f"""
+            <script>
+            async function registerAuthenticator() {{
+                const options = {json.dumps(registration_options)};
+                try {{
+                    const credential = await navigator.credentials.create(options);
+                    document.getElementById("response").value = JSON.stringify(credential);
+                }} catch (err) {{
+                    document.getElementById("response").value = JSON.stringify({{"error": err.message}});
+                }}
+            }}
+            registerAuthenticator();
+            </script>
+            <input type="hidden" id="response" name="response">
+            """
+            st.components.v1.html(js_code, height=300)
 
-# Function to trigger user login (WebAuthn)
-def login_user(user_id):
-    response = requests.post(f"{BACKEND_URL}/login_options", json={"user_id": user_id})
-    options = response.json()
-    
-    st.session_state.authentication_options = options
+            # Capture WebAuthn response
+            webauthn_response = st.text_area("Paste the WebAuthn response here:")
+            if st.button("Submit Registration"):
+                try:
+                    response = json.loads(webauthn_response)
+                    if "error" in response:
+                        st.error(f"Registration failed: {response['error']}")
+                    else:
+                        # Save user and credential ID in SQLite
+                        credential_id = response['rawId']
+                        try:
+                            cursor.execute("INSERT INTO users (id, username, credential_id) VALUES (?, ?, ?)", 
+                                           (user_id, username, credential_id))
+                            conn.commit()
+                            st.success("Registration successful!")
+                            st.write(f"Saved credential ID: {credential_id}")
+                        except sqlite3.IntegrityError:
+                            st.error("Username already exists. Please choose a different username.")
+                except Exception as e:
+                    st.error(f"Failed to process response: {e}")
 
-    # Trigger WebAuthn login in the browser using JavaScript
-    st.components.v1.html(f"""
-        <script>
-            const options = {json.dumps(options)};
-            navigator.credentials.get({{
-                publicKey: options
-            }}).then(response => {{
-                fetch("{BACKEND_URL}/login_response", {{
-                    method: 'POST',
-                    body: JSON.stringify({
-                        user_id: "{user_id}",
-                        response_data: response
-                    }),
-                    headers: {{
-                        'Content-Type': 'application/json'
-                    }}
-                }});
-            }}).catch(err => {{
-                console.log("Login failed: ", err);
-            }});
-        </script>
-    """, height=0)
+# Step 3: Handle Authentication
+if option == "Authenticate":
+    st.header("Authenticate with Biometrics")
 
-# Streamlit UI for Register and Login
-st.title("WebAuthn Fingerprint Authentication")
-user_id = st.text_input("Enter User ID")
-user_name = st.text_input("Enter User Name")
+    username = st.text_input("Enter your username to authenticate:")
+    if st.button("Authenticate"):
+        cursor.execute("SELECT credential_id FROM users WHERE username = ?", (username,))
+        row = cursor.fetchone()
+        if row:
+            credential_id = row[0]
+            authentication_options = generate_authentication_options(credential_id)
 
-if st.button("Register User"):
-    register_user(user_id, user_name)
-    st.success("Registration process initiated!")
+            # Embed WebAuthn authentication JS in Streamlit
+            js_code = f"""
+            <script>
+            async function authenticate() {{
+                const options = {json.dumps(authentication_options)};
+                try {{
+                    const assertion = await navigator.credentials.get(options);
+                    document.getElementById("response").value = JSON.stringify(assertion);
+                }} catch (err) {{
+                    document.getElementById("response").value = JSON.stringify({{"error": err.message}});
+                }}
+            }}
+            authenticate();
+            </script>
+            <input type="hidden" id="response" name="response">
+            """
+            st.components.v1.html(js_code, height=300)
 
-if st.button("Login User"):
-    login_user(user_id)
-    st.success("Login process initiated!")
+            # Capture WebAuthn response
+            webauthn_response = st.text_area("Paste the WebAuthn response here:")
+            if st.button("Submit Authentication"):
+                try:
+                    response = json.loads(webauthn_response)
+                    if "error" in response:
+                        st.error(f"Authentication failed: {response['error']}")
+                    else:
+                        st.success("Authentication successful!")
+                        st.write("Authentication response:")
+                        st.json(response)
+                except Exception as e:
+                    st.error(f"Failed to process response: {e}")
+        else:
+            st.error("User not found. Please register first.")
