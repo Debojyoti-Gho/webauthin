@@ -24,7 +24,6 @@ webauthn_registration_html = """
                             const credential = await navigator.credentials.create(options);
                             console.log(credential);
                             // Send this credential data to your backend for processing
-                            // Use fetch to send credential to your backend for storage/validation
                             fetch("/register", {
                                 method: 'POST',
                                 body: JSON.stringify(credential),
@@ -85,30 +84,24 @@ webauthn_registration_html = """
 st.components.v1.html(webauthn_registration_html)
 
 # Backend: Define Streamlit server-side functionality for registration and authentication
-@st.cache
 def register_webauthn(credential_data):
     # Logic to handle the registration, e.g., store credential data in your backend
     # This part would typically involve storing the attestationObject, and clientDataJSON in your database
     return {"status": "success", "message": "Registration successful!"}
 
-@st.cache
 def authenticate_webauthn(credential_data):
     # Logic to handle the authentication, e.g., verify the credentials against stored data
     return {"status": "success", "message": "Authentication successful!"}
 
-# Server-side routes to handle POST requests
-def register():
-    if st.request.method == 'POST':
-        credential_data = st.request.json()
-        result = register_webauthn(credential_data)
-        st.write(result)
+# Server-side actions triggered by user interaction
+if st.button("Register Biometric Authenticator"):
+    # Call the WebAuthn registration function when the button is pressed
+    credential_data = {}  # Replace with actual credential data from frontend
+    result = register_webauthn(credential_data)
+    st.write(result)
 
-def authenticate():
-    if st.request.method == 'POST':
-        credential_data = st.request.json()
-        result = authenticate_webauthn(credential_data)
-        st.write(result)
-
-# Streamlit setup for HTTP methods (requests to backend) 
-register()
-authenticate()
+if st.button("Login with Biometric"):
+    # Call the WebAuthn authentication function when the button is pressed
+    credential_data = {}  # Replace with actual credential data from frontend
+    result = authenticate_webauthn(credential_data)
+    st.write(result)
