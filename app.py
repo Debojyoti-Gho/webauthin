@@ -21,55 +21,21 @@ def init_db():
 
 init_db()
 
-# Helper to generate registration options
-def generate_registration_options(user_id, username):
-    return {
-        "publicKey": {
-            "rp": {
-                "id": "localhost",  # Replace with your domain in production
-                "name": "Streamlit WebAuthn App"
-            },
-            "user": {
-                "id": base64.b64encode(user_id.encode()).decode(),  # Base64 encode user ID
-                "name": username,
-                "displayName": username
-            },
-            "challenge": base64.b64encode(uuid4().bytes).decode(),  # Base64 encode challenge
-            "pubKeyCredParams": [{"type": "public-key", "alg": -7}],  # ECDSA with SHA-256
-            "authenticatorSelection": {"userVerification": "preferred"}
-        }
-    }
-
 # Helper to generate authentication options
 def generate_authentication_options(credential_id):
+    challenge = base64.b64encode(uuid4().bytes).decode()  # Base64 encoded challenge
     return {
         "publicKey": {
             "rpId": "localhost",  # Replace with your domain in production
-            "challenge": base64.b64encode(uuid4().bytes).decode(),  # Base64 encode challenge
+            "challenge": challenge,
             "userVerification": "preferred",
             "allowCredentials": [
-                {"type": "public-key", "id": base64.b64encode(credential_id).decode()}  # Base64 encode credential ID
+                {"type": "public-key", "id": base64.b64encode(credential_id.encode()).decode()}
             ]
-        }
+        },
+        "challenge_base64": challenge,
+        "credential_id_base64": base64.b64encode(credential_id.encode()).decode()
     }
-
-# WebAuthn Registration Process
-def register_user(username, response):
-    data = json.loads(response)
-    credential_id = base64.b64encode(bytes(data["rawId"])).decode()  # Encode credential ID as base64
-    public_key = json.dumps(data["response"]["attestationObject"])  # Store attestation object as JSON
-
-    conn = sqlite3.connect("webauthn.db")
-    c = conn.cursor()
-    try:
-        c.execute("INSERT INTO users (id, username, credential_id, public_key) VALUES (?, ?, ?, ?)", 
-                  (str(uuid4()), username, credential_id, public_key))
-        conn.commit()
-        return "Registration successful!"
-    except sqlite3.IntegrityError:
-        return "Username already exists. Please choose a different username."
-    finally:
-        conn.close()
 
 # WebAuthn Authentication Process
 def authenticate_user(username, response):
@@ -122,26 +88,25 @@ with tab1:
                         attestationObject: Array.from(new Uint8Array(credential.response.attestationObject))
                     }}
                 }};
-                // Automatically send this response to the server
-                fetch("/register", {{
-                    method: "POST",
-                    headers: {{
-                        "Content-Type": "application/json"
-                    }},
-                    body: JSON.stringify(response)
-                }}).then(response => {{
-                    return response.json();
-                }}).then(data => {{
-                    alert(data.message);  // Show registration success/failure message
-                }});
+                document.getElementById("response").value = JSON.stringify(response);
+                document.getElementById("form").submit();
             }} catch (err) {{
                 alert("Registration failed: " + err.message);
             }}
         }}
         registerAuthenticator();
         </script>
+        <form id="form" method="post">
+            <input type="hidden" id="response" name="response">
+        </form>
         """
         st.markdown(js_code, unsafe_allow_html=True)
+
+    # Handle WebAuthn Response
+    response = st.text_area("Paste the WebAuthn response here:")
+    if response and st.button("Submit Registration"):
+        message = register_user(username, response)
+        st.success(message)
 
 # Authentication Tab
 with tab2:
@@ -162,46 +127,45 @@ with tab2:
 
             js_code = f"""
             <script>
-            async function authenticate() {
-                const options = { /* your options here */ };
+            async function authenticate() {{
+                const options = {json.dumps(authentication_options)};
                 options.publicKey.challenge = Uint8Array.from(atob(options.publicKey.challenge), c => c.charCodeAt(0));
-                options.publicKey.allowCredentials = options.publicKey.allowCredentials.map(cred => ({
-                    id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0)),
-                    type: cred.type,
-                    transports: cred.transports  // Ensure we include these properties
-                }));
-            
-                try {
+                options.publicKey.allowCredentials = options.publicKey.allowCredentials.map(cred => {{
+                    return {{
+                        id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0)),
+                        type: cred.type,
+                        transports: cred.transports
+                    }};
+                }});
+
+                try {{
                     const assertion = await navigator.credentials.get(options);
-                    const response = {
+                    const response = {{
                         id: assertion.id,
                         rawId: Array.from(new Uint8Array(assertion.rawId)),
                         type: assertion.type,
-                        response: {
+                        response: {{
                             clientDataJSON: Array.from(new Uint8Array(assertion.response.clientDataJSON)),
                             authenticatorData: Array.from(new Uint8Array(assertion.response.authenticatorData)),
                             signature: Array.from(new Uint8Array(assertion.response.signature))
-                        }
-                    };
-            
-                    // Automatically send this response to the server
-                    fetch("/authenticate", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify(response)
-                    }).then(response => {
-                        return response.json();
-                    }).then(data => {
-                        alert(data.message);  // Show authentication success/failure message
-                    });
-                } catch (err) {
+                        }}
+                    }};
+                    document.getElementById("auth_response").value = JSON.stringify(response);
+                    document.getElementById("auth_form").submit();
+                }} catch (err) {{
                     alert("Authentication failed: " + err.message);
-                }
-            }
+                }}
+            }}
             authenticate();
             </script>
-
+            <form id="auth_form" method="post">
+                <input type="hidden" id="auth_response" name="auth_response">
+            </form>
             """
             st.markdown(js_code, unsafe_allow_html=True)
+
+    # Handle WebAuthn Response
+    auth_response = st.text_area("Paste the WebAuthn response here (Authentication):")
+    if auth_response and st.button("Submit Authentication"):
+        message = authenticate_user(username, auth_response)
+        st.success(message)
