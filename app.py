@@ -61,26 +61,6 @@ def register_user(username, response):
     finally:
         conn.close()
 
-# WebAuthn Authentication Process
-def authenticate_user(username, response):
-    conn = sqlite3.connect("webauthn.db")
-    c = conn.cursor()
-    c.execute("SELECT credential_id FROM users WHERE username = ?", (username,))
-    row = c.fetchone()
-    conn.close()
-
-    if not row:
-        return "User not found!"
-
-    credential_id = base64.b64decode(row[0])  # Decode credential ID from base64
-    data = json.loads(response)
-
-    # Validate the response (this is a placeholder, actual validation logic should be added)
-    if data.get("id") and bytes(data["id"]) == credential_id:
-        return "Authentication successful!"
-    else:
-        return "Authentication failed!"
-
 # Streamlit Frontend
 st.title("WebAuthn with SQLite")
 
@@ -97,12 +77,16 @@ with tab1:
         js_code = f"""
         <script>
         async function registerAuthenticator() {{
+            console.log("Registration started");
             const options = {json.dumps(registration_options)};
             options.publicKey.challenge = Uint8Array.from(atob(options.publicKey.challenge), c => c.charCodeAt(0));
             options.publicKey.user.id = Uint8Array.from(atob(options.publicKey.user.id), c => c.charCodeAt(0));
 
             try {{
+                console.log("Calling navigator.credentials.create with options:", options);
                 const credential = await navigator.credentials.create(options);
+                console.log("Credential created:", credential);
+
                 const response = {{
                     id: credential.id,
                     rawId: Array.from(new Uint8Array(credential.rawId)),
@@ -115,6 +99,7 @@ with tab1:
                 document.getElementById("response").value = JSON.stringify(response);
                 document.getElementById("form").submit();
             }} catch (err) {{
+                console.error("Registration failed:", err.message);
                 alert("Registration failed: " + err.message);
             }}
         }}
@@ -132,64 +117,3 @@ with tab1:
         message = register_user(username, response)
         st.success(message)
 
-# Authentication Tab
-with tab2:
-    st.header("Authenticate with your Authenticator")
-    username = st.text_input("Enter your username:", key="auth_username")
-    if username and st.button("Authenticate"):
-        conn = sqlite3.connect("webauthn.db")
-        c = conn.cursor()
-        c.execute("SELECT credential_id FROM users WHERE username = ?", (username,))
-        row = c.fetchone()
-        conn.close()
-
-        if not row:
-            st.error("User not found!")
-        else:
-            credential_id = base64.b64decode(row[0])
-            authentication_options = generate_authentication_options(credential_id)
-
-            js_code = f"""
-            <script>
-            async function authenticate() {{
-                const options = {json.dumps(authentication_options)};
-                options.publicKey.challenge = Uint8Array.from(atob(options.publicKey.challenge), c => c.charCodeAt(0));
-                options.publicKey.allowCredentials = options.publicKey.allowCredentials.map(cred => {{
-                    return {{
-                        id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0)),
-                        type: cred.type,
-                        transports: cred.transports
-                    }};
-                }});
-
-                try {{
-                    const assertion = await navigator.credentials.get(options);
-                    const response = {{
-                        id: assertion.id,
-                        rawId: Array.from(new Uint8Array(assertion.rawId)),
-                        type: assertion.type,
-                        response: {{
-                            clientDataJSON: Array.from(new Uint8Array(assertion.response.clientDataJSON)),
-                            authenticatorData: Array.from(new Uint8Array(assertion.response.authenticatorData)),
-                            signature: Array.from(new Uint8Array(assertion.response.signature))
-                        }}
-                    }};
-                    document.getElementById("auth_response").value = JSON.stringify(response);
-                    document.getElementById("auth_form").submit();
-                }} catch (err) {{
-                    alert("Authentication failed: " + err.message);
-                }}
-            }}
-            authenticate();
-            </script>
-            <form id="auth_form" method="post">
-                <input type="hidden" id="auth_response" name="auth_response">
-            </form>
-            """
-            st.markdown(js_code, unsafe_allow_html=True)
-
-    # Handle WebAuthn Response
-    auth_response = st.text_area("Paste the WebAuthn response here (Authentication):")
-    if auth_response and st.button("Submit Authentication"):
-        message = authenticate_user(username, auth_response)
-        st.success(message)
