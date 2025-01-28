@@ -8,12 +8,24 @@ webauthn_registration_html = """
                 if (window.PublicKeyCredential) {
                     console.log("WebAuthn supported!");
 
+                    // Utility function to convert base64 to ArrayBuffer
+                    function base64ToArrayBuffer(base64) {
+                        var binary_string = atob(base64);
+                        var len = binary_string.length;
+                        var bytes = new Uint8Array(len);
+                        for (var i = 0; i < len; i++) {
+                            bytes[i] = binary_string.charCodeAt(i);
+                        }
+                        return bytes.buffer;
+                    }
+
                     async function registerAuthenticator() {
                         const options = {
                             publicKey: {
                                 rp: { id: "cosmosclownstore.com", name: "Cosmo’s Clown Store" },
                                 user: { id: "1234", name: "krusty@example.com", displayName: "Krusty The Clown" },
-                                challenge: "random-challenge",
+                                // Assume `challenge` comes as a base64-encoded string from your backend
+                                challenge: base64ToArrayBuffer("random-challenge-in-base64"), // Replace this with actual challenge
                                 pubKeyCredParams: [ { type: "public-key", alg: -7 }],
                                 authenticatorSelection: {}
                             }
@@ -43,7 +55,7 @@ webauthn_registration_html = """
                         const options = {
                             publicKey: {
                                 rpId: "cosmosclownstore.com",
-                                challenge: "random-challenge",
+                                challenge: base64ToArrayBuffer("random-challenge-in-base64"), // Replace this with actual challenge
                                 userVerification: "preferred",
                                 allowCredentials: [{ type: "public-key", id: credentialId }]
                             }
