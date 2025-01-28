@@ -166,11 +166,14 @@ with tab2:
             async function authenticate() {{
                 const options = {json.dumps(authentication_options)};
                 options.publicKey.challenge = Uint8Array.from(atob(options.publicKey.challenge), c => c.charCodeAt(0));
-                options.publicKey.allowCredentials = options.publicKey.allowCredentials.map(cred => ({
-                    ...cred,
-                    id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0))
-                }));
-
+                
+                // Fix: Replace spread syntax with Object.assign
+                options.publicKey.allowCredentials = options.publicKey.allowCredentials.map(function(cred) {{
+                    return Object.assign({}, cred, {{
+                        id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0))
+                    }});
+                }});
+            
                 try {{
                     const assertion = await navigator.credentials.get(options);
                     const response = {{
@@ -195,6 +198,7 @@ with tab2:
                 <input type="hidden" id="auth_response" name="auth_response">
             </form>
             """
+
             st.markdown(js_code, unsafe_allow_html=True)
 
     # Handle WebAuthn Response for Authentication
