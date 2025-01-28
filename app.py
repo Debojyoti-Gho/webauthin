@@ -2,6 +2,7 @@ import streamlit as st
 import sqlite3
 import json
 from uuid import uuid4
+import base64
 
 # Database setup
 conn = sqlite3.connect("users.db")
@@ -33,11 +34,11 @@ def generate_registration_options(user_id, username):
                 "name": "Streamlit WebAuthn App"
             },
             "user": {
-                "id": user_id.encode(),
+                "id": base64.b64encode(user_id.encode()).decode(),  # Encode to base64 string
                 "name": username,
                 "displayName": username
             },
-            "challenge": uuid4().hex.encode(),  # Random challenge for security
+            "challenge": base64.b64encode(uuid4().hex.encode()).decode(),  # Encode challenge to base64 string
             "pubKeyCredParams": [{"type": "public-key", "alg": -7}],  # ECDSA with SHA-256
             "authenticatorSelection": {"userVerification": "preferred"}
         }
@@ -48,9 +49,9 @@ def generate_authentication_options(credential_id):
     return {
         "publicKey": {
             "rpId": "localhost",  # Use your domain in production
-            "challenge": uuid4().hex.encode(),  # Random challenge for security
+            "challenge": base64.b64encode(uuid4().hex.encode()).decode(),  # Encode challenge to base64 string
             "userVerification": "preferred",
-            "allowCredentials": [{"type": "public-key", "id": credential_id.encode()}]
+            "allowCredentials": [{"type": "public-key", "id": credential_id}]
         }
     }
 
