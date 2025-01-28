@@ -24,13 +24,13 @@ st.title("WebAuthn with SQLite")
 st.sidebar.header("Actions")
 option = st.sidebar.selectbox("Choose an action", ["Register", "Authenticate"])
 
-# Step 1: Define helper functions
+# Helper functions
 def generate_registration_options(user_id, username):
     """Generate options for WebAuthn registration."""
     return {
         "publicKey": {
             "rp": {
-                "id": "localhost",  # Use your domain in production
+                "id": "localhost",  # Replace with your domain in production
                 "name": "Streamlit WebAuthn App"
             },
             "user": {
@@ -48,14 +48,13 @@ def generate_authentication_options(credential_id):
     """Generate options for WebAuthn authentication."""
     return {
         "publicKey": {
-            "rpId": "localhost",  # Use your domain in production
+            "rpId": "localhost",  # Replace with your domain in production
             "challenge": base64.b64encode(uuid4().hex.encode()).decode(),  # Encode challenge to base64 string
             "userVerification": "preferred",
             "allowCredentials": [{"type": "public-key", "id": credential_id}]
         }
     }
 
-# Step 2: Handle Registration
 if option == "Register":
     st.header("Register an Authenticator")
     
@@ -72,39 +71,46 @@ if option == "Register":
                 const options = {json.dumps(registration_options)};
                 try {{
                     const credential = await navigator.credentials.create(options);
-                    document.getElementById("response").value = JSON.stringify(credential);
+                    const response = {{
+                        id: credential.id,
+                        rawId: Array.from(new Uint8Array(credential.rawId)),
+                        type: credential.type,
+                        response: {{
+                            clientDataJSON: Array.from(new Uint8Array(credential.response.clientDataJSON)),
+                            attestationObject: Array.from(new Uint8Array(credential.response.attestationObject))
+                        }}
+                    }};
+                    document.getElementById("response").value = JSON.stringify(response);
+                    document.getElementById("form").submit();
                 }} catch (err) {{
-                    document.getElementById("response").value = JSON.stringify({{"error": err.message}});
+                    alert("Registration failed: " + err.message);
                 }}
             }}
             registerAuthenticator();
             </script>
-            <input type="hidden" id="response" name="response">
+            <form id="form" method="post">
+                <input type="hidden" id="response" name="response">
+            </form>
             """
-            st.components.v1.html(js_code, height=300)
+            st.components.v1.html(js_code, height=0)
 
-            # Capture WebAuthn response
-            webauthn_response = st.text_area("Paste the WebAuthn response here:")
-            if st.button("Submit Registration"):
+            if "response" in st.session_state:
                 try:
-                    response = json.loads(webauthn_response)
-                    if "error" in response:
-                        st.error(f"Registration failed: {response['error']}")
-                    else:
-                        # Save user and credential ID in SQLite
-                        credential_id = response['rawId']
-                        try:
-                            cursor.execute("INSERT INTO users (id, username, credential_id) VALUES (?, ?, ?)", 
-                                           (user_id, username, credential_id))
-                            conn.commit()
-                            st.success("Registration successful!")
-                            st.write(f"Saved credential ID: {credential_id}")
-                        except sqlite3.IntegrityError:
-                            st.error("Username already exists. Please choose a different username.")
+                    response = json.loads(st.session_state["response"])
+                    credential_id = response["id"]
+
+                    # Save user and credential ID in SQLite
+                    try:
+                        cursor.execute("INSERT INTO users (id, username, credential_id) VALUES (?, ?, ?)", 
+                                       (user_id, username, credential_id))
+                        conn.commit()
+                        st.success("Registration successful!")
+                        st.write(f"Saved credential ID: {credential_id}")
+                    except sqlite3.IntegrityError:
+                        st.error("Username already exists. Please choose a different username.")
                 except Exception as e:
                     st.error(f"Failed to process response: {e}")
 
-# Step 3: Handle Authentication
 if option == "Authenticate":
     st.header("Authenticate with Biometrics")
 
@@ -123,28 +129,37 @@ if option == "Authenticate":
                 const options = {json.dumps(authentication_options)};
                 try {{
                     const assertion = await navigator.credentials.get(options);
-                    document.getElementById("response").value = JSON.stringify(assertion);
+                    const response = {{
+                        id: assertion.id,
+                        rawId: Array.from(new Uint8Array(assertion.rawId)),
+                        type: assertion.type,
+                        response: {{
+                            authenticatorData: Array.from(new Uint8Array(assertion.response.authenticatorData)),
+                            clientDataJSON: Array.from(new Uint8Array(assertion.response.clientDataJSON)),
+                            signature: Array.from(new Uint8Array(assertion.response.signature)),
+                            userHandle: assertion.response.userHandle
+                        }}
+                    }};
+                    document.getElementById("response").value = JSON.stringify(response);
+                    document.getElementById("form").submit();
                 }} catch (err) {{
-                    document.getElementById("response").value = JSON.stringify({{"error": err.message}});
+                    alert("Authentication failed: " + err.message);
                 }}
             }}
             authenticate();
             </script>
-            <input type="hidden" id="response" name="response">
+            <form id="form" method="post">
+                <input type="hidden" id="response" name="response">
+            </form>
             """
-            st.components.v1.html(js_code, height=300)
+            st.components.v1.html(js_code, height=0)
 
-            # Capture WebAuthn response
-            webauthn_response = st.text_area("Paste the WebAuthn response here:")
-            if st.button("Submit Authentication"):
+            if "response" in st.session_state:
                 try:
-                    response = json.loads(webauthn_response)
-                    if "error" in response:
-                        st.error(f"Authentication failed: {response['error']}")
-                    else:
-                        st.success("Authentication successful!")
-                        st.write("Authentication response:")
-                        st.json(response)
+                    response = json.loads(st.session_state["response"])
+                    st.success("Authentication successful!")
+                    st.write("Authentication response:")
+                    st.json(response)
                 except Exception as e:
                     st.error(f"Failed to process response: {e}")
         else:
