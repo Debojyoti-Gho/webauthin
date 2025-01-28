@@ -1,5 +1,4 @@
 import streamlit as st
-import requests
 
 # Frontend: Display the WebAuthn HTML and JavaScript
 webauthn_registration_html = """
@@ -67,6 +66,11 @@ webauthn_registration_html = """
                             console.error("Error during authentication:", error);
                         }
                     }
+
+                    // Expose the functions globally so they are accessible by the buttons
+                    window.registerAuthenticator = registerAuthenticator;
+                    window.authenticateUser = authenticateUser;
+
                 } else {
                     alert("WebAuthn is not supported in this browser.");
                 }
@@ -82,26 +86,3 @@ webauthn_registration_html = """
 
 # Display the WebAuthn registration and authentication UI
 st.components.v1.html(webauthn_registration_html)
-
-# Backend: Define Streamlit server-side functionality for registration and authentication
-def register_webauthn(credential_data):
-    # Logic to handle the registration, e.g., store credential data in your backend
-    # This part would typically involve storing the attestationObject, and clientDataJSON in your database
-    return {"status": "success", "message": "Registration successful!"}
-
-def authenticate_webauthn(credential_data):
-    # Logic to handle the authentication, e.g., verify the credentials against stored data
-    return {"status": "success", "message": "Authentication successful!"}
-
-# Server-side actions triggered by user interaction
-if st.button("Register Biometric Authenticator"):
-    # Call the WebAuthn registration function when the button is pressed
-    credential_data = {}  # Replace with actual credential data from frontend
-    result = register_webauthn(credential_data)
-    st.write(result)
-
-if st.button("Login with Biometric"):
-    # Call the WebAuthn authentication function when the button is pressed
-    credential_data = {}  # Replace with actual credential data from frontend
-    result = authenticate_webauthn(credential_data)
-    st.write(result)
