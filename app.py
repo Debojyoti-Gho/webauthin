@@ -21,21 +21,45 @@ def init_db():
 
 init_db()
 
-# Helper to generate authentication options
-def generate_authentication_options(credential_id):
+# Helper to generate registration options
+def generate_registration_options(user_id, username):
     challenge = base64.b64encode(uuid4().bytes).decode()  # Base64 encoded challenge
     return {
         "publicKey": {
-            "rpId": "localhost",  # Replace with your domain in production
-            "challenge": challenge,
-            "userVerification": "preferred",
-            "allowCredentials": [
-                {"type": "public-key", "id": base64.b64encode(credential_id.encode()).decode()}
-            ]
+            "rp": {
+                "id": "localhost",  # Replace with your domain in production
+                "name": "Streamlit WebAuthn App"
+            },
+            "user": {
+                "id": base64.b64encode(user_id.encode()).decode(),  # Base64 encode user ID
+                "name": username,
+                "displayName": username
+            },
+            "challenge": challenge,  # Use the challenge here
+            "pubKeyCredParams": [{"type": "public-key", "alg": -7}],  # ECDSA with SHA-256
+            "authenticatorSelection": {"userVerification": "preferred"}
         },
         "challenge_base64": challenge,
-        "credential_id_base64": base64.b64encode(credential_id.encode()).decode()
+        "credential_id_base64": base64.b64encode(user_id.encode()).decode()
     }
+
+# WebAuthn Registration Process
+def register_user(username, response):
+    data = json.loads(response)
+    credential_id = base64.b64encode(bytes(data["rawId"])).decode()  # Encode credential ID as base64
+    public_key = json.dumps(data["response"]["attestationObject"])  # Store attestation object as JSON
+
+    conn = sqlite3.connect("webauthn.db")
+    c = conn.cursor()
+    try:
+        c.execute("INSERT INTO users (id, username, credential_id, public_key) VALUES (?, ?, ?, ?)", 
+                  (str(uuid4()), username, credential_id, public_key))
+        conn.commit()
+        return "Registration successful!"
+    except sqlite3.IntegrityError:
+        return "Username already exists. Please choose a different username."
+    finally:
+        conn.close()
 
 # WebAuthn Authentication Process
 def authenticate_user(username, response):
@@ -67,7 +91,7 @@ with tab1:
     st.header("Register an Authenticator")
     username = st.text_input("Enter your username:")
     if username and st.button("Register"):
-        user_id = str(uuid4())
+        user_id = str(uuid4())  # Generate user_id as a UUID string
         registration_options = generate_registration_options(user_id, username)
 
         js_code = f"""
