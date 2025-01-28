@@ -1,195 +1,114 @@
 import streamlit as st
-import sqlite3
-import base64
-import json
-from uuid import uuid4
+import requests
 
-# Database initialization
-def init_db():
-    conn = sqlite3.connect("webauthn.db")
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY,
-            username TEXT UNIQUE,
-            credential_id TEXT,
-            public_key TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-init_db()
-
-# Helper to generate registration options
-def generate_registration_options(user_id, username):
-    return {
-        "publicKey": {
-            "rp": {
-                "id": "localhost",  # Replace with your domain in production
-                "name": "Streamlit WebAuthn App"
-            },
-            "user": {
-                "id": base64.b64encode(user_id.encode()).decode(),  # Base64 encode user ID
-                "name": username,
-                "displayName": username
-            },
-            "challenge": base64.b64encode(uuid4().bytes).decode(),  # Base64 encode challenge
-            "pubKeyCredParams": [{"type": "public-key", "alg": -7}],  # ECDSA with SHA-256
-            "authenticatorSelection": {"userVerification": "preferred"}
-        }
-    }
-
-# Helper to generate authentication options
-def generate_authentication_options(credential_id):
-    return {
-        "publicKey": {
-            "rpId": "localhost",  # Replace with your domain in production
-            "challenge": base64.b64encode(uuid4().bytes).decode(),  # Base64 encode challenge
-            "userVerification": "preferred",
-            "allowCredentials": [
-                {"type": "public-key", "id": base64.b64encode(credential_id).decode()}  # Base64 encode credential ID
-            ]
-        }
-    }
-
-# WebAuthn Registration Process
-def register_user(username, response):
-    data = json.loads(response)
-    credential_id = base64.b64encode(bytes(data["rawId"])).decode()  # Encode credential ID as base64
-    public_key = json.dumps(data["response"]["attestationObject"])  # Store attestation object as JSON
-
-    conn = sqlite3.connect("webauthn.db")
-    c = conn.cursor()
-    try:
-        c.execute("INSERT INTO users (id, username, credential_id, public_key) VALUES (?, ?, ?, ?)", 
-                  (str(uuid4()), username, credential_id, public_key))
-        conn.commit()
-        return "Registration successful!"
-    except sqlite3.IntegrityError:
-        return "Username already exists. Please choose a different username."
-    finally:
-        conn.close()
-
-# WebAuthn Authentication Process
-def authenticate_user(username, response):
-    conn = sqlite3.connect("webauthn.db")
-    c = conn.cursor()
-    c.execute("SELECT credential_id FROM users WHERE username = ?", (username,))
-    row = c.fetchone()
-    conn.close()
-
-    if not row:
-        return "User not found!"
-
-    credential_id = base64.b64decode(row[0])  # Decode credential ID from base64
-    data = json.loads(response)
-
-    # Validate the response (this is a placeholder, actual validation logic should be added)
-    if data.get("id") and bytes(data["id"]) == credential_id:
-        return "Authentication successful!"
-    else:
-        return "Authentication failed!"
-
-# Streamlit Frontend
-st.title("WebAuthn with SQLite")
-
-tab1, tab2 = st.tabs(["Register", "Authenticate"])
-
-# Registration Tab
-with tab1:
-    st.header("Register an Authenticator")
-    username = st.text_input("Enter your username:")
-
-    if username and st.button("Register"):
-        user_id = str(uuid4())
-        registration_options = generate_registration_options(user_id, username)
-
-        # JavaScript to call WebAuthn API for registration
-        js_code = f"""
-        <script>
-        async function registerAuthenticator() {{
-            const options = {json.dumps(registration_options)};
-            options.publicKey.challenge = Uint8Array.from(atob(options.publicKey.challenge), c => c.charCodeAt(0));
-            options.publicKey.user.id = Uint8Array.from(atob(options.publicKey.user.id), c => c.charCodeAt(0));
-
-            try {{
-                const credential = await navigator.credentials.create(options);
-                const response = {{
-                    id: credential.id,
-                    rawId: Array.from(new Uint8Array(credential.rawId)),
-                    type: credential.type,
-                    response: {{
-                        clientDataJSON: Array.from(new Uint8Array(credential.response.clientDataJSON)),
-                        attestationObject: Array.from(new Uint8Array(credential.response.attestationObject))
-                    }}
-                }};
-                document.getElementById("response").value = JSON.stringify(response);
-                document.getElementById("form").submit();
-            }} catch (err) {{
-                alert("Registration failed: " + err.message);
-            }}
-        }}
-        registerAuthenticator();
-        </script>
-        <form id="form" method="post">
-            <input type="hidden" id="response" name="response">
-        </form>
-        """
-        st.markdown(js_code, unsafe_allow_html=True)
-
-# Authentication Tab
-with tab2:
-    st.header("Authenticate with your Authenticator")
-    username = st.text_input("Enter your username:", key="auth_username")
-    if username and st.button("Authenticate"):
-        conn = sqlite3.connect("webauthn.db")
-        c = conn.cursor()
-        c.execute("SELECT credential_id FROM users WHERE username = ?", (username,))
-        row = c.fetchone()
-        conn.close()
-
-        if not row:
-            st.error("User not found!")
-        else:
-            credential_id = base64.b64decode(row[0])
-            authentication_options = generate_authentication_options(credential_id)
-
-            js_code = f"""
+# Frontend: Display the WebAuthn HTML and JavaScript
+webauthn_registration_html = """
+    <html>
+        <head>
             <script>
-            async function authenticate() {{
-                const options = {json.dumps(authentication_options)};
-                options.publicKey.challenge = Uint8Array.from(atob(options.publicKey.challenge), c => c.charCodeAt(0));
-                
-                // Fix: Replace spread syntax with Object.assign
-                options.publicKey.allowCredentials = options.publicKey.allowCredentials.map(function(cred) {{
-                    return Object.assign({}, cred, {{
-                        id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0))
-                    }});
-                }});
+                if (window.PublicKeyCredential) {
+                    console.log("WebAuthn supported!");
 
-                try {{
-                    const assertion = await navigator.credentials.get(options);
-                    const response = {{
-                        id: assertion.id,
-                        rawId: Array.from(new Uint8Array(assertion.rawId)),
-                        type: assertion.type,
-                        response: {{
-                            clientDataJSON: Array.from(new Uint8Array(assertion.response.clientDataJSON)),
-                            authenticatorData: Array.from(new Uint8Array(assertion.response.authenticatorData)),
-                            signature: Array.from(new Uint8Array(assertion.response.signature))
-                        }}
-                    }};
-                    document.getElementById("auth_response").value = JSON.stringify(response);
-                    document.getElementById("auth_form").submit();
-                }} catch (err) {{
-                    alert("Authentication failed: " + err.message);
-                }}
-            }}
-            authenticate();
+                    async function registerAuthenticator() {
+                        const options = {
+                            publicKey: {
+                                rp: { id: "cosmosclownstore.com", name: "Cosmo’s Clown Store" },
+                                user: { id: "1234", name: "krusty@example.com", displayName: "Krusty The Clown" },
+                                challenge: "random-challenge",
+                                pubKeyCredParams: [ { type: "public-key", alg: -7 }],
+                                authenticatorSelection: {}
+                            }
+                        };
+
+                        try {
+                            const credential = await navigator.credentials.create(options);
+                            console.log(credential);
+                            // Send this credential data to your backend for processing
+                            // Use fetch to send credential to your backend for storage/validation
+                            fetch("/register", {
+                                method: 'POST',
+                                body: JSON.stringify(credential),
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                }
+                            })
+                            .then(response => response.json())
+                            .then(data => console.log("Registration response", data));
+                        } catch (error) {
+                            console.error("Error during registration:", error);
+                        }
+                    }
+
+                    async function authenticateUser() {
+                        const credentialId = "credential_id_from_registration";
+
+                        const options = {
+                            publicKey: {
+                                rpId: "cosmosclownstore.com",
+                                challenge: "random-challenge",
+                                userVerification: "preferred",
+                                allowCredentials: [{ type: "public-key", id: credentialId }]
+                            }
+                        };
+
+                        try {
+                            const credential = await navigator.credentials.get(options);
+                            console.log(credential);
+                            // Send authentication data to your backend for verification
+                            fetch("/authenticate", {
+                                method: 'POST',
+                                body: JSON.stringify(credential),
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                }
+                            })
+                            .then(response => response.json())
+                            .then(data => console.log("Authentication response", data));
+                        } catch (error) {
+                            console.error("Error during authentication:", error);
+                        }
+                    }
+                } else {
+                    alert("WebAuthn is not supported in this browser.");
+                }
             </script>
-            <form id="auth_form" method="post">
-                <input type="hidden" id="auth_response" name="auth_response">
-            </form>
-            """
-            st.markdown(js_code, unsafe_allow_html=True)
+        </head>
+        <body>
+            <h1>WebAuthn Authentication</h1>
+            <button onclick="registerAuthenticator()">Register Biometric Authenticator</button>
+            <button onclick="authenticateUser()">Login with Biometric</button>
+        </body>
+    </html>
+"""
+
+# Display the WebAuthn registration and authentication UI
+st.components.v1.html(webauthn_registration_html)
+
+# Backend: Define Streamlit server-side functionality for registration and authentication
+@st.cache
+def register_webauthn(credential_data):
+    # Logic to handle the registration, e.g., store credential data in your backend
+    # This part would typically involve storing the attestationObject, and clientDataJSON in your database
+    return {"status": "success", "message": "Registration successful!"}
+
+@st.cache
+def authenticate_webauthn(credential_data):
+    # Logic to handle the authentication, e.g., verify the credentials against stored data
+    return {"status": "success", "message": "Authentication successful!"}
+
+# Server-side routes to handle POST requests
+def register():
+    if st.request.method == 'POST':
+        credential_data = st.request.json()
+        result = register_webauthn(credential_data)
+        st.write(result)
+
+def authenticate():
+    if st.request.method == 'POST':
+        credential_data = st.request.json()
+        result = authenticate_webauthn(credential_data)
+        st.write(result)
+
+# Streamlit setup for HTTP methods (requests to backend) 
+register()
+authenticate()
