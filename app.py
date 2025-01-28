@@ -198,7 +198,6 @@ with tab2:
                 <input type="hidden" id="auth_response" name="auth_response">
             </form>
             """
-
             st.markdown(js_code, unsafe_allow_html=True)
 
     # Handle WebAuthn Response for Authentication
