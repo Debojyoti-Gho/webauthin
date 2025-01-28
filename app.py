@@ -138,12 +138,6 @@ with tab1:
         """
         st.markdown(js_code, unsafe_allow_html=True)
 
-    # Handle WebAuthn Response
-    response = st.text_area("Paste the WebAuthn response here:")
-    if response and st.button("Submit Registration"):
-        message = register_user(username, response)
-        st.success(message)
-
 # Authentication Tab
 with tab2:
     st.header("Authenticate with your Authenticator")
@@ -161,48 +155,41 @@ with tab2:
             credential_id = base64.b64decode(row[0])
             authentication_options = generate_authentication_options(credential_id)
 
-            js_code = """
+            js_code = f"""
             <script>
-            async function authenticate() {
-                const options = """ + json.dumps(authentication_options) + """;
+            async function authenticate() {{
+                const options = {json.dumps(authentication_options)};
                 options.publicKey.challenge = Uint8Array.from(atob(options.publicKey.challenge), c => c.charCodeAt(0));
                 
                 // Fix: Replace spread syntax with Object.assign
-                options.publicKey.allowCredentials = options.publicKey.allowCredentials.map(function(cred) {
-                    return Object.assign({}, cred, {
+                options.publicKey.allowCredentials = options.publicKey.allowCredentials.map(function(cred) {{
+                    return Object.assign({}, cred, {{
                         id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0))
-                    });
-                });
-            
-                try {
+                    }});
+                }});
+
+                try {{
                     const assertion = await navigator.credentials.get(options);
-                    const response = {
+                    const response = {{
                         id: assertion.id,
                         rawId: Array.from(new Uint8Array(assertion.rawId)),
                         type: assertion.type,
-                        response: {
+                        response: {{
                             clientDataJSON: Array.from(new Uint8Array(assertion.response.clientDataJSON)),
                             authenticatorData: Array.from(new Uint8Array(assertion.response.authenticatorData)),
                             signature: Array.from(new Uint8Array(assertion.response.signature))
-                        }
-                    };
+                        }}
+                    }};
                     document.getElementById("auth_response").value = JSON.stringify(response);
                     document.getElementById("auth_form").submit();
-                } catch (err) {
+                }} catch (err) {{
                     alert("Authentication failed: " + err.message);
-                }
-            }
+                }}
+            }}
             authenticate();
             </script>
             <form id="auth_form" method="post">
                 <input type="hidden" id="auth_response" name="auth_response">
             </form>
             """
-
             st.markdown(js_code, unsafe_allow_html=True)
-
-    # Handle WebAuthn Response for Authentication
-    auth_response = st.text_area("Paste the WebAuthn response here (Authentication):")
-    if auth_response and st.button("Submit Authentication"):
-        message = authenticate_user(username, auth_response)
-        st.success(message)
